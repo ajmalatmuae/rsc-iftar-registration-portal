@@ -108,7 +108,18 @@ export function Ticket({ userData }: { userData: any }) {
               {/* Main Content */}
         <div className="p-8 h-full flex flex-col justify-between">
           <div className="flex-1">
-            <h3 className="text-[#f59e0b] text-3xl font-serif leading-tight mb-8 mt-4">
+            <div className="flex justify-between items-start mb-6">
+              <img 
+                src="https://lh3.googleusercontent.com/d/13L4kdEX64GtYiNyCZtH3eG9BJFZLrIf_" 
+                alt="Logo" 
+                className="h-12 object-contain"
+                referrerPolicy="no-referrer"
+              />
+              <div className={`px-3 py-1 rounded-full text-[10px] font-bold tracking-widest uppercase ${isNight ? 'bg-amber-500/20 text-amber-400' : 'bg-stone-100 text-stone-600'}`}>
+                Official Entry
+              </div>
+            </div>
+            <h3 className="text-[#f59e0b] text-3xl font-serif leading-tight mb-8">
               Exclusive Iftar<br />Gathering
             </h3>
             
