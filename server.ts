@@ -3,7 +3,10 @@ import { google } from "googleapis";
 import cors from "cors";
 import dotenv from "dotenv";
 
-dotenv.config();
+// Only load dotenv in development
+if (process.env.NODE_ENV !== "production") {
+  dotenv.config();
+}
 
 const app = express();
 const PORT = 3000;
@@ -11,11 +14,26 @@ const PORT = 3000;
 app.use(cors());
 app.use(express.json());
 
+// Helper to format the private key correctly for Google Auth
+const getPrivateKey = () => {
+  const key = process.env.GOOGLE_PRIVATE_KEY;
+  if (!key) return undefined;
+  
+  // Handle keys that might be wrapped in quotes from Vercel UI
+  let formattedKey = key.trim();
+  if (formattedKey.startsWith('"') && formattedKey.endsWith('"')) {
+    formattedKey = formattedKey.slice(1, -1);
+  }
+  
+  // Replace escaped newlines with actual newlines
+  return formattedKey.replace(/\\n/g, '\n');
+};
+
 // Create a router for API
 const apiRouter = express.Router();
 
 apiRouter.get("/health", (req, res) => {
-  res.json({ status: "ok" });
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
 apiRouter.post("/admin/login", (req, res) => {
@@ -31,16 +49,19 @@ apiRouter.post("/admin/login", (req, res) => {
 });
 
 apiRouter.get("/debug", (req, res) => {
+  const privateKey = getPrivateKey();
   res.json({
     status: "ok",
     env: {
       GOOGLE_SPREADSHEET_ID: !!process.env.GOOGLE_SPREADSHEET_ID,
       GOOGLE_CLIENT_EMAIL: !!process.env.GOOGLE_CLIENT_EMAIL,
-      GOOGLE_PRIVATE_KEY: !!process.env.GOOGLE_PRIVATE_KEY,
+      GOOGLE_PRIVATE_KEY_EXISTS: !!process.env.GOOGLE_PRIVATE_KEY,
+      GOOGLE_PRIVATE_KEY_FORMATTED: !!privateKey && privateKey.includes('BEGIN PRIVATE KEY'),
       ADMIN_USERNAME: !!process.env.ADMIN_USERNAME,
       ADMIN_PASSWORD: !!process.env.ADMIN_PASSWORD,
     },
     node_env: process.env.NODE_ENV,
+    vercel_env: process.env.VERCEL_ENV || 'local'
   });
 });
 
@@ -48,10 +69,11 @@ apiRouter.get("/registrations", async (req, res) => {
   try {
     const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
     const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
-    const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+    const privateKey = getPrivateKey();
 
     if (!spreadsheetId || !clientEmail || !privateKey) {
-      return res.json({ status: "success", data: [], message: "Credentials missing, returning empty data" });
+      console.error("Missing credentials:", { spreadsheetId: !!spreadsheetId, clientEmail: !!clientEmail, privateKey: !!privateKey });
+      return res.json({ status: "success", data: [], message: "Credentials missing" });
     }
 
     const auth = new google.auth.GoogleAuth({
@@ -125,7 +147,7 @@ apiRouter.post("/register", async (req, res) => {
 
     const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
     const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
-    const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+    const privateKey = getPrivateKey();
 
     if (!spreadsheetId || !clientEmail || !privateKey) {
       return res.json({ status: "success", message: "Mock saved (credentials missing)" });
@@ -188,7 +210,7 @@ apiRouter.post("/attendance", async (req, res) => {
     const { identifier } = req.body;
     const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
     const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
-    const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+    const privateKey = getPrivateKey();
 
     if (!spreadsheetId || !clientEmail || !privateKey) {
       return res.json({ status: "success", message: "Mock attendance saved (credentials missing)" });
@@ -248,7 +270,7 @@ apiRouter.delete("/registrations/:registrationId", async (req, res) => {
     const { registrationId } = req.params;
     const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
     const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
-    const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+    const privateKey = getPrivateKey();
 
     if (!spreadsheetId || !clientEmail || !privateKey) {
       return res.json({ status: "success", message: "Mock deletion (credentials missing)" });
@@ -308,19 +330,32 @@ apiRouter.delete("/registrations/:registrationId", async (req, res) => {
 });
 
 // Mount the router
-// Handle both /api and root (Vercel rewrites can be tricky)
 app.use("/api", apiRouter);
 app.use("/", apiRouter);
+
+// Global error handler
+app.use((err: any, req: any, res: any, next: any) => {
+  console.error("Global Error Handler:", err);
+  res.status(500).json({
+    status: "error",
+    message: "Internal Server Error",
+    details: err.message || "Unknown error"
+  });
+});
 
 // Vite middleware for development
 if (process.env.NODE_ENV !== "production") {
   const setupVite = async () => {
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
+    try {
+      const { createServer: createViteServer } = await import("vite");
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } catch (e) {
+      console.error("Vite setup failed:", e);
+    }
   };
   setupVite();
   
