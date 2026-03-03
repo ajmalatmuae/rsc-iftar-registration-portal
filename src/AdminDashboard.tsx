@@ -309,9 +309,13 @@ export function AdminDashboard({ onBack }: { onBack: () => void }) {
       if (result.status === 'success') {
         setIsAuthenticated(true);
       } else {
+        console.log("1")
+        console.log(result)
         setLoginError('Invalid username or password');
       }
     } catch (error) {
+      console.log("2")
+      console.log(error)
       setLoginError('An error occurred during login');
     } finally {
       setIsLoading(false);
