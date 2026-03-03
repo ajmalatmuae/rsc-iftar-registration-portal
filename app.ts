@@ -1,5 +1,4 @@
 import express from "express";
-import { google } from "googleapis";
 import cors from "cors";
 import dotenv from "dotenv";
 
@@ -33,16 +32,12 @@ const getEnvVar = (name: string) => {
 const apiRouter = express.Router();
 
 apiRouter.get("/health", (req, res) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString() });
+  res.json({ status: "ok", timestamp: new Date().toISOString(), env: process.env.NODE_ENV });
 });
 
 apiRouter.post("/admin/login", (req, res) => {
   try {
-    if (!req.body) {
-      return res.status(400).json({ status: "error", message: "Request body is missing" });
-    }
-    
-    const { username, password } = req.body;
+    const { username, password } = req.body || {};
     const adminUsername = getEnvVar("ADMIN_USERNAME") || "admin";
     const adminPassword = getEnvVar("ADMIN_PASSWORD") || "risalaupdate";
 
@@ -52,57 +47,45 @@ apiRouter.post("/admin/login", (req, res) => {
       res.status(401).json({ status: "error", message: "Invalid credentials" });
     }
   } catch (error: any) {
-    console.error("Login route error:", error);
-    res.status(500).json({ 
-      status: "error", 
-      message: "Internal server error during login", 
-      details: error.message || "Unknown error" 
-    });
+    res.status(500).json({ status: "error", message: "Login error" });
   }
 });
 
 apiRouter.get("/debug", (req, res) => {
   const privateKey = getPrivateKey();
-  const spreadsheetId = getEnvVar("GOOGLE_SPREADSHEET_ID");
-  const clientEmail = getEnvVar("GOOGLE_CLIENT_EMAIL");
-
   res.json({
     status: "ok",
     diagnostics: {
-      spreadsheetId_detected: !!spreadsheetId,
-      clientEmail_detected: !!clientEmail,
-      privateKey_detected: !!process.env.GOOGLE_PRIVATE_KEY || !!process.env.VITE_GOOGLE_PRIVATE_KEY,
-      privateKey_valid_format: !!privateKey && privateKey.includes('BEGIN PRIVATE KEY'),
-      privateKey_length: privateKey ? privateKey.length : 0,
-    },
-    env_keys_found: Object.keys(process.env).filter(k => 
-      k.includes('GOOGLE') || k.includes('ADMIN') || k.includes('VITE_GOOGLE')
-    ),
-    node_env: process.env.NODE_ENV,
-    vercel_env: process.env.VERCEL_ENV || 'not-detected'
+      spreadsheetId: !!getEnvVar("GOOGLE_SPREADSHEET_ID"),
+      clientEmail: !!getEnvVar("GOOGLE_CLIENT_EMAIL"),
+      privateKey: !!privateKey,
+      privateKey_format: privateKey?.includes('BEGIN PRIVATE KEY'),
+    }
   });
 });
 
+// Lazy load Google Sheets logic to avoid heavy imports on cold start
+const getSheetsClient = async () => {
+  const { google } = await import("googleapis");
+  const spreadsheetId = getEnvVar("GOOGLE_SPREADSHEET_ID");
+  const clientEmail = getEnvVar("GOOGLE_CLIENT_EMAIL");
+  const privateKey = getPrivateKey();
+
+  if (!spreadsheetId || !clientEmail || !privateKey) {
+    throw new Error("Missing Google Sheets credentials");
+  }
+
+  const auth = new google.auth.GoogleAuth({
+    credentials: { client_email: clientEmail, private_key: privateKey },
+    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+  });
+
+  return { sheets: google.sheets({ version: "v4", auth }), spreadsheetId };
+};
+
 apiRouter.get("/registrations", async (req, res) => {
   try {
-    const spreadsheetId = getEnvVar("GOOGLE_SPREADSHEET_ID");
-    const clientEmail = getEnvVar("GOOGLE_CLIENT_EMAIL");
-    const privateKey = getPrivateKey();
-
-    if (!spreadsheetId || !clientEmail || !privateKey) {
-      return res.json({ 
-        status: "success", 
-        data: [], 
-        message: "Credentials missing in environment"
-      });
-    }
-
-    const auth = new google.auth.GoogleAuth({
-      credentials: { client_email: clientEmail, private_key: privateKey },
-      scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
-    });
-
-    const sheets = google.sheets({ version: "v4", auth });
+    const { sheets, spreadsheetId } = await getSheetsClient();
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
       range: "Sheet1!A:O",
@@ -132,8 +115,8 @@ apiRouter.get("/registrations", async (req, res) => {
 
     res.json({ status: "success", data });
   } catch (error: any) {
-    console.error("Error fetching from Google Sheets:", error);
-    res.status(500).json({ status: "error", message: "Failed to fetch registrations" });
+    console.error("Fetch error:", error);
+    res.status(500).json({ status: "error", message: error.message });
   }
 });
 
@@ -145,20 +128,7 @@ apiRouter.post("/register", async (req, res) => {
       gender, age, musandamTrip, date, mealsPledged
     } = req.body;
 
-    const spreadsheetId = getEnvVar("GOOGLE_SPREADSHEET_ID");
-    const clientEmail = getEnvVar("GOOGLE_CLIENT_EMAIL");
-    const privateKey = getPrivateKey();
-
-    if (!spreadsheetId || !clientEmail || !privateKey) {
-      return res.json({ status: "success", message: "Mock saved (credentials missing)" });
-    }
-
-    const auth = new google.auth.GoogleAuth({
-      credentials: { client_email: clientEmail, private_key: privateKey },
-      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-    });
-
-    const sheets = google.sheets({ version: "v4", auth });
+    const { sheets, spreadsheetId } = await getSheetsClient();
     const fullProfession = profession === 'Other' ? otherProfession : profession;
     const fullWhatsapp = `${whatsappCode}${whatsappNumber}`;
     const cleanWhatsapp = fullWhatsapp.replace(/\+/g, '');
@@ -178,28 +148,15 @@ apiRouter.post("/register", async (req, res) => {
 
     res.json({ status: "success" });
   } catch (error: any) {
-    console.error("Error saving to Google Sheets:", error);
-    res.status(500).json({ status: "error", message: "Failed to save registration" });
+    console.error("Register error:", error);
+    res.status(500).json({ status: "error", message: error.message });
   }
 });
 
 apiRouter.post("/attendance", async (req, res) => {
   try {
     const { identifier } = req.body;
-    const spreadsheetId = getEnvVar("GOOGLE_SPREADSHEET_ID");
-    const clientEmail = getEnvVar("GOOGLE_CLIENT_EMAIL");
-    const privateKey = getPrivateKey();
-
-    if (!spreadsheetId || !clientEmail || !privateKey) {
-      return res.json({ status: "success", message: "Mock attendance saved" });
-    }
-
-    const auth = new google.auth.GoogleAuth({
-      credentials: { client_email: clientEmail, private_key: privateKey },
-      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-    });
-
-    const sheets = google.sheets({ version: "v4", auth });
+    const { sheets, spreadsheetId } = await getSheetsClient();
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
       range: "Sheet1!A:O",
@@ -231,29 +188,15 @@ apiRouter.post("/attendance", async (req, res) => {
     } else {
       res.status(404).json({ status: "error", message: "Registration not found" });
     }
-  } catch (error) {
-    console.error("Error updating attendance:", error);
-    res.status(500).json({ status: "error", message: "Failed to update attendance" });
+  } catch (error: any) {
+    res.status(500).json({ status: "error", message: error.message });
   }
 });
 
 apiRouter.delete("/registrations/:registrationId", async (req, res) => {
   try {
     const { registrationId } = req.params;
-    const spreadsheetId = getEnvVar("GOOGLE_SPREADSHEET_ID");
-    const clientEmail = getEnvVar("GOOGLE_CLIENT_EMAIL");
-    const privateKey = getPrivateKey();
-
-    if (!spreadsheetId || !clientEmail || !privateKey) {
-      return res.json({ status: "success", message: "Mock deletion" });
-    }
-
-    const auth = new google.auth.GoogleAuth({
-      credentials: { client_email: clientEmail, private_key: privateKey },
-      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-    });
-
-    const sheets = google.sheets({ version: "v4", auth });
+    const { sheets, spreadsheetId } = await getSheetsClient();
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
       range: "Sheet1!A:A",
@@ -289,22 +232,11 @@ apiRouter.delete("/registrations/:registrationId", async (req, res) => {
     } else {
       res.status(404).json({ status: "error", message: "Registration not found" });
     }
-  } catch (error) {
-    console.error("Error deleting registration:", error);
-    res.status(500).json({ status: "error", message: "Failed to delete registration" });
+  } catch (error: any) {
+    res.status(500).json({ status: "error", message: error.message });
   }
 });
 
 app.use("/api", apiRouter);
-
-// Global error handler
-app.use((err: any, req: any, res: any, next: any) => {
-  console.error("Global Error Handler:", err);
-  res.status(500).json({
-    status: "error",
-    message: "Internal Server Error",
-    details: err.message || "Unknown error"
-  });
-});
 
 export default app;
