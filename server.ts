@@ -40,14 +40,28 @@ apiRouter.get("/health", (req, res) => {
 });
 
 apiRouter.post("/admin/login", (req, res) => {
-  const { username, password } = req.body;
-  const adminUsername = getEnvVar("ADMIN_USERNAME") || "admin";
-  const adminPassword = getEnvVar("ADMIN_PASSWORD") || "risalaupdate";
+  try {
+    if (!req.body) {
+      return res.status(400).json({ status: "error", message: "Request body is missing" });
+    }
+    
+    const { username, password } = req.body;
+    
+    const adminUsername = getEnvVar("ADMIN_USERNAME") || "admin";
+    const adminPassword = getEnvVar("ADMIN_PASSWORD") || "risalaupdate";
 
-  if (username === adminUsername && password === adminPassword) {
-    res.json({ status: "success", token: "admin-token-123" });
-  } else {
-    res.status(401).json({ status: "error", message: "Invalid credentials" });
+    if (username === adminUsername && password === adminPassword) {
+      res.json({ status: "success", token: "admin-token-123" });
+    } else {
+      res.status(401).json({ status: "error", message: "Invalid credentials" });
+    }
+  } catch (error: any) {
+    console.error("Login route error:", error);
+    res.status(500).json({ 
+      status: "error", 
+      message: "Internal server error during login", 
+      details: error.message || "Unknown error" 
+    });
   }
 });
 

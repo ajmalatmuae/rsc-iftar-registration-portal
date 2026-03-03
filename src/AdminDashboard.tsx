@@ -305,18 +305,23 @@ export function AdminDashboard({ onBack }: { onBack: () => void }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
       });
-      const result = await response.json();
-      if (result.status === 'success') {
-        setIsAuthenticated(true);
+      
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.indexOf("application/json") !== -1) {
+        const result = await response.json();
+        if (result.status === 'success') {
+          setIsAuthenticated(true);
+        } else {
+          setLoginError(result.message || 'Invalid username or password');
+        }
       } else {
-        console.log("1")
-        console.log(result)
-        setLoginError('Invalid username or password');
+        const text = await response.text();
+        console.error('Non-JSON response:', text);
+        setLoginError(`Server Error: ${response.status} ${response.statusText}`);
       }
-    } catch (error) {
-      console.log("2")
-      console.log(error)
-      setLoginError('An error occurred during login');
+    } catch (error: any) {
+      console.error('Login error:', error);
+      setLoginError(`Connection Error: ${error.message}`);
     } finally {
       setIsLoading(false);
     }

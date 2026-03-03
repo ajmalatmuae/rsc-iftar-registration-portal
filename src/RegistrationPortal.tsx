@@ -127,7 +127,7 @@ export function RegistrationPortal() {
           >
             <div className={`p-4 rounded-3xl backdrop-blur-sm ${isNight ? 'bg-white/10' : 'bg-white/50 shadow-sm'}`}>
               <img 
-                src="/assets/logo-rsc-new.jpg" 
+                src="https://picsum.photos/seed/ramadan/200/200" 
                 alt="RSC Logo" 
                 className="h-20 md:h-24 object-contain rounded-xl"
                 referrerPolicy="no-referrer"
