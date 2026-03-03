@@ -1,0 +1,5 @@
+{
+  "name": "Professional Iftar Registration",
+  "description": "A dynamic registration portal for a professional Iftar event. Features a day/night theme based on the time of day, a charity pledge integration, a 3D venue tour, and a downloadable ticket barcode.",
+  "requestFramePermissions": ["camera"]
+}
