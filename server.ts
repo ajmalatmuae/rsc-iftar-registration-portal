@@ -3,10 +3,8 @@ import { google } from "googleapis";
 import cors from "cors";
 import dotenv from "dotenv";
 
-// Only load dotenv in development
-if (process.env.NODE_ENV !== "production") {
-  dotenv.config();
-}
+// Load environment variables
+dotenv.config();
 
 const app = express();
 const PORT = 3000;
@@ -16,7 +14,8 @@ app.use(express.json());
 
 // Helper to format the private key correctly for Google Auth
 const getPrivateKey = () => {
-  const key = process.env.GOOGLE_PRIVATE_KEY;
+  // Try both standard and VITE_ prefixed versions as a fallback
+  const key = process.env.GOOGLE_PRIVATE_KEY || process.env.VITE_GOOGLE_PRIVATE_KEY;
   if (!key) return undefined;
   
   // Handle keys that might be wrapped in quotes from Vercel UI
@@ -29,6 +28,10 @@ const getPrivateKey = () => {
   return formattedKey.replace(/\\n/g, '\n');
 };
 
+const getEnvVar = (name: string) => {
+  return process.env[name] || process.env[`VITE_${name}`];
+};
+
 // Create a router for API
 const apiRouter = express.Router();
 
@@ -38,8 +41,8 @@ apiRouter.get("/health", (req, res) => {
 
 apiRouter.post("/admin/login", (req, res) => {
   const { username, password } = req.body;
-  const adminUsername = process.env.ADMIN_USERNAME || "admin";
-  const adminPassword = process.env.ADMIN_PASSWORD || "risalaupdate";
+  const adminUsername = getEnvVar("ADMIN_USERNAME") || "admin";
+  const adminPassword = getEnvVar("ADMIN_PASSWORD") || "risalaupdate";
 
   if (username === adminUsername && password === adminPassword) {
     res.json({ status: "success", token: "admin-token-123" });
@@ -50,30 +53,48 @@ apiRouter.post("/admin/login", (req, res) => {
 
 apiRouter.get("/debug", (req, res) => {
   const privateKey = getPrivateKey();
+  const spreadsheetId = getEnvVar("GOOGLE_SPREADSHEET_ID");
+  const clientEmail = getEnvVar("GOOGLE_CLIENT_EMAIL");
+
   res.json({
     status: "ok",
-    env: {
-      GOOGLE_SPREADSHEET_ID: !!process.env.GOOGLE_SPREADSHEET_ID,
-      GOOGLE_CLIENT_EMAIL: !!process.env.GOOGLE_CLIENT_EMAIL,
-      GOOGLE_PRIVATE_KEY_EXISTS: !!process.env.GOOGLE_PRIVATE_KEY,
-      GOOGLE_PRIVATE_KEY_FORMATTED: !!privateKey && privateKey.includes('BEGIN PRIVATE KEY'),
-      ADMIN_USERNAME: !!process.env.ADMIN_USERNAME,
-      ADMIN_PASSWORD: !!process.env.ADMIN_PASSWORD,
+    diagnostics: {
+      spreadsheetId_detected: !!spreadsheetId,
+      clientEmail_detected: !!clientEmail,
+      privateKey_detected: !!process.env.GOOGLE_PRIVATE_KEY || !!process.env.VITE_GOOGLE_PRIVATE_KEY,
+      privateKey_valid_format: !!privateKey && privateKey.includes('BEGIN PRIVATE KEY'),
+      privateKey_length: privateKey ? privateKey.length : 0,
     },
+    env_keys_found: Object.keys(process.env).filter(k => 
+      k.includes('GOOGLE') || k.includes('ADMIN') || k.includes('VITE_GOOGLE')
+    ),
     node_env: process.env.NODE_ENV,
-    vercel_env: process.env.VERCEL_ENV || 'local'
+    vercel_env: process.env.VERCEL_ENV || 'not-detected'
   });
 });
 
 apiRouter.get("/registrations", async (req, res) => {
   try {
-    const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
-    const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
+    const spreadsheetId = getEnvVar("GOOGLE_SPREADSHEET_ID");
+    const clientEmail = getEnvVar("GOOGLE_CLIENT_EMAIL");
     const privateKey = getPrivateKey();
 
     if (!spreadsheetId || !clientEmail || !privateKey) {
-      console.error("Missing credentials:", { spreadsheetId: !!spreadsheetId, clientEmail: !!clientEmail, privateKey: !!privateKey });
-      return res.json({ status: "success", data: [], message: "Credentials missing" });
+      console.error("Missing credentials:", { 
+        spreadsheetId: !!spreadsheetId, 
+        clientEmail: !!clientEmail, 
+        privateKey: !!privateKey 
+      });
+      return res.json({ 
+        status: "success", 
+        data: [], 
+        message: "Credentials missing in environment",
+        debug_info: {
+          has_id: !!spreadsheetId,
+          has_email: !!clientEmail,
+          has_key: !!privateKey
+        }
+      });
     }
 
     const auth = new google.auth.GoogleAuth({
@@ -145,8 +166,8 @@ apiRouter.post("/register", async (req, res) => {
       mealsPledged
     } = req.body;
 
-    const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
-    const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
+    const spreadsheetId = getEnvVar("GOOGLE_SPREADSHEET_ID");
+    const clientEmail = getEnvVar("GOOGLE_CLIENT_EMAIL");
     const privateKey = getPrivateKey();
 
     if (!spreadsheetId || !clientEmail || !privateKey) {
@@ -208,8 +229,8 @@ apiRouter.post("/register", async (req, res) => {
 apiRouter.post("/attendance", async (req, res) => {
   try {
     const { identifier } = req.body;
-    const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
-    const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
+    const spreadsheetId = getEnvVar("GOOGLE_SPREADSHEET_ID");
+    const clientEmail = getEnvVar("GOOGLE_CLIENT_EMAIL");
     const privateKey = getPrivateKey();
 
     if (!spreadsheetId || !clientEmail || !privateKey) {
@@ -268,8 +289,8 @@ apiRouter.post("/attendance", async (req, res) => {
 apiRouter.delete("/registrations/:registrationId", async (req, res) => {
   try {
     const { registrationId } = req.params;
-    const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
-    const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
+    const spreadsheetId = getEnvVar("GOOGLE_SPREADSHEET_ID");
+    const clientEmail = getEnvVar("GOOGLE_CLIENT_EMAIL");
     const privateKey = getPrivateKey();
 
     if (!spreadsheetId || !clientEmail || !privateKey) {
