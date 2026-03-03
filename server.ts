@@ -30,6 +30,20 @@ apiRouter.post("/admin/login", (req, res) => {
   }
 });
 
+apiRouter.get("/debug", (req, res) => {
+  res.json({
+    status: "ok",
+    env: {
+      GOOGLE_SPREADSHEET_ID: !!process.env.GOOGLE_SPREADSHEET_ID,
+      GOOGLE_CLIENT_EMAIL: !!process.env.GOOGLE_CLIENT_EMAIL,
+      GOOGLE_PRIVATE_KEY: !!process.env.GOOGLE_PRIVATE_KEY,
+      ADMIN_USERNAME: !!process.env.ADMIN_USERNAME,
+      ADMIN_PASSWORD: !!process.env.ADMIN_PASSWORD,
+    },
+    node_env: process.env.NODE_ENV,
+  });
+});
+
 apiRouter.get("/registrations", async (req, res) => {
   try {
     const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
@@ -78,9 +92,13 @@ apiRouter.get("/registrations", async (req, res) => {
     }));
 
     res.json({ status: "success", data });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching from Google Sheets:", error);
-    res.status(500).json({ status: "error", message: "Failed to fetch registrations" });
+    res.status(500).json({ 
+      status: "error", 
+      message: "Failed to fetch registrations",
+      details: error.message || "Unknown error"
+    });
   }
 });
 
@@ -155,9 +173,13 @@ apiRouter.post("/register", async (req, res) => {
     });
 
     res.json({ status: "success" });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error saving to Google Sheets:", error);
-    res.status(500).json({ status: "error", message: "Failed to save registration" });
+    res.status(500).json({ 
+      status: "error", 
+      message: "Failed to save registration",
+      details: error.message || "Unknown error"
+    });
   }
 });
 
