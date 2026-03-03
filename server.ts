@@ -14,6 +14,7 @@ app.use(express.json());
 
 // Helper to format the private key correctly for Google Auth
 const getPrivateKey = () => {
+  console.log(process.env.GOOGLE_PRIVATE_KEY)
   // Try both standard and VITE_ prefixed versions as a fallback
   const key = process.env.GOOGLE_PRIVATE_KEY || process.env.VITE_GOOGLE_PRIVATE_KEY;
   if (!key) return undefined;
@@ -41,8 +42,8 @@ apiRouter.get("/health", (req, res) => {
 
 apiRouter.post("/admin/login", (req, res) => {
   const { username, password } = req.body;
-  const adminUsername = getEnvVar("ADMIN_USERNAME") || "admin";
-  const adminPassword = getEnvVar("ADMIN_PASSWORD") || "risalaupdate";
+  const adminUsername = "admin";
+  const adminPassword = "risalaupdate";
 
   if (username === adminUsername && password === adminPassword) {
     res.json({ status: "success", token: "admin-token-123" });
